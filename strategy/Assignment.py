@@ -1,75 +1,66 @@
 import numpy as np
+from typing import Dict, List, Tuple
 
-def role_assignment(teammate_positions, formation_positions): 
-
-    # Input : Locations of all teammate locations and positions
-    # Output : Map from unum -> positions
-    #-----------------------------------------------------------#
-    
-    def euclidean_distance(pos1, pos2):
-        return np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
-    
-    def create_preference_lists(teammate_positions, formation_positions):
-        n = len(teammate_positions)
-        player_preferences = {}
+def role_assignment(teammate_positions: List[Tuple[float, float]],
+                    formation_positions: List[Tuple[float, float]]) -> Dict[int, Tuple[float, float]]:
+    def distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:
+        dx, dy =a[0]-b[0],a[1]-b[1]
+        return np.sqrt(dx * dx + dy * dy)
+    def build_preference_lists(players: List[Tuple[float,float]],
+                               roles: List[Tuple[float,float]]):
+        n = len(players)
+        player_prefs: Dict[int, List[int]] ={}
         for i in range(n):
-            distances = []
+            dists =[]
             for j in range(n):
-                distance = euclidean_distance(teammate_positions[i], formation_positions[j])
-                distances.append((distance, j))
-            distances.sort(key=lambda x: x[0])
-            player_preferences[i] = [idx for _, idx in distances]
-        
-        role_preferences = {}
+                dists.append((distance(players[i],roles[j]),j))
+            dists.sort(key=lambda x: x[0])
+            player_prefs[i] =[idx for _, idx in dists]
+        role_prefs: Dict[int, List[int]] ={}
         for j in range(n):
-            distances = []
+            dists =[]
             for i in range(n):
-                distance = euclidean_distance(formation_positions[j], teammate_positions[i])
-                distances.append((distance, i))
-            distances.sort(key=lambda x: x[0])
-            role_preferences[j] = [idx for _, idx in distances]
-        
-        return player_preferences, role_preferences
-    
-    def gale_shapley_algorithm(player_preferences, role_preferences):
-        n = len(player_preferences)
-        unmatched_players = list(range(n))
-        current_matches = {role: None for role in range(n)}  
-        player_next_proposal = {player: 0 for player in range(n)}  
-        
-        while unmatched_players:
-            player = unmatched_players.pop(0)
-            if player_next_proposal[player] < n:
-                role = player_preferences[player][player_next_proposal[player]]
-                player_next_proposal[player] += 1
-                if current_matches[role] is None:
-                    current_matches[role] = player
+                dists.append((distance(roles[j], players[i]), i))
+            dists.sort(key=lambda x: x[0])
+            role_prefs[j] =[idx for _, idx in dists]
+        return player_prefs, role_prefs
+
+    def gale(player_prefs: Dict[int, List[int]],
+                     role_prefs: Dict[int, List[int]]) -> Dict[int, int]:
+        n = len(player_prefs)
+        role_match: Dict[int, int | None] = {r: None for r in range(n)}
+        next_proposal_idx: Dict[int, int] = {p: 0 for p in range(n)}
+        free_players: List[int] = list(range(n))
+
+        while free_players:
+            p =free_players.pop(0)  
+            if next_proposal_idx[p]<n:
+                r =player_prefs[p][next_proposal_idx[p]]
+                next_proposal_idx[p] += 1
+                if role_match[r] is None:
+                    role_match[r]=p
                 else:
-                    current_partner = current_matches[role]
-                    current_partner_rank = role_preferences[role].index(current_partner)
-                    new_proposer_rank = role_preferences[role].index(player)
-                    
-                    if new_proposer_rank < current_partner_rank:
-                        current_matches[role] = player
-                        unmatched_players.append(current_partner)  # Previous partner becomes unmatched
+                    current =role_match[r]
+                    curr_rank =role_prefs[r].index(current)
+                    new_rank =role_prefs[r].index(p)
+                    if new_rank<curr_rank:
+                        role_match[r] =p
+                        free_players.append(current) 
                     else:
-                        unmatched_players.append(player)
+                        free_players.append(p)
             else:
                 break
-        
-        player_to_role = {}
-        for role, player in current_matches.items():
-            if player is not None:
-                player_to_role[player] = role
-        
+        player_to_role: Dict[int, int] ={}
+        for r, p in role_match.items():
+            if p is not None:
+                player_to_role[p] =r
         return player_to_role
     n = len(teammate_positions)
-    player_preferences, role_preferences = create_preference_lists(teammate_positions, formation_positions)
-    player_to_role_mapping = gale_shapley_algorithm(player_preferences, role_preferences)
-    point_preferences = {}
+    player_prefs, role_prefs =build_preference_lists(teammate_positions, formation_positions)
+    assignment =gale(player_prefs, role_prefs)
+    result: Dict[int, Tuple[float, float]] = {}
     for player_idx in range(n):
-        unum = player_idx + 1  # Convert 0-based to 1-based indexing
-        assigned_role = player_to_role_mapping[player_idx]
-        point_preferences[unum] = formation_positions[assigned_role]
-    
-    return point_preferences
+        unum =player_idx + 1
+        role_idx =assignment[player_idx]
+        result[unum] =formation_positions[role_idx]
+    return result
